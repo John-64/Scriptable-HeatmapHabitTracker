@@ -9,6 +9,10 @@ A minimalist iOS habit tracker widget built for [Scriptable](https://scriptable.
 
 What makes it especially motivating is the **streak system**: seeing your current streak grow day after day creates a strong visual incentive to stay consistent, while the best streak gives you a clear goal to beat. The value on the top left shows your **current streak / best streak**, while the value on the top right shows **completed days / total elapsed days**.
 
+<p align="center" style="flex; justify-items: center; align-items: center;">
+  <img src="media/logo.png" alt="Habit Tracker Widget" width="30%"/>
+</p>
+
 ## Features
 - Supports **small**, **medium**, and **large** widget sizes
 - Squares auto-size to fill all available space on any device
