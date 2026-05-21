@@ -1,15 +1,13 @@
 // John64 - Scriptable Habit Tracker
 
 // ==== USER CONFIGURATION ====
-const HABIT_NAME = "English";
+const HABIT_NAME = "Read";
 const FOLDER_NAME = "Habits";
 const YEAR = 2026;
 
-// 0 = January, 1 = February, ..., 11 = December
-const START_DATE = new Date(YEAR, 2, 24);
-const END_DATE = new Date(YEAR, 4, 24);
+const START_DATE = new Date(YEAR, 0, 1);
+const END_DATE = new Date(YEAR, 11, 31);
 
-// Widget sizes in points for your device (pre-set for iPhone 13).
 const DEVICE_WIDGET_SIZES = {
   small:  { w: 158, h: 158 },
   medium: { w: 348, h: 158 },
@@ -29,34 +27,28 @@ const GRID_COLOR_UNFILLED = new Color("#FFFFFF", 0.2);
 const FONT_REGULAR = new Font("Menlo", 12);
 const FONT_BOLD = new Font("Menlo-Bold", 12);
 
-// 0 = YYYY-MM-DD | 1 = MM/DD/YYYY | 2 = DD/MM/YYYY
-const USER_DATE_FORMAT = 2; 
+const USER_DATE_FORMAT = 2;
 
 // ==== END USER CONFIGURATION ====
 
-// Widget family detection
 const FAMILY = config.widgetFamily ?? "medium";
 
-// Use device sizes defined above; fall back to medium if family is unknown
 const { w: WIDGET_WIDTH, h: WIDGET_HEIGHT } =
   DEVICE_WIDGET_SIZES[FAMILY] ?? DEVICE_WIDGET_SIZES.medium;
 
-// Padding — tight but safe for rounded corners
 const PADDING_TOP = FAMILY === "small" ? 5 : 6;
 const PADDING_BOTTOM = FAMILY === "small" ? 5 : 6;
 const PADDING_HORIZONTAL = FAMILY === "small" ? 14 : 20;
 const HEADER_TO_GRID_GAP = 3;
 const HEADER_HEIGHT = 14;
 
-// Spacing between squares
 const MIN_SPACING = FAMILY === "small" ? 1.5 : 2;
 
-// File management
 const FILE_NAME = `${HABIT_NAME} ${YEAR}.json`;
 const FM = FileManager.iCloud();
 const HABITS_DIR = FM.joinPath(FM.documentsDirectory(), FOLDER_NAME);
 
-if (!FM.fileExists(HABITS_DIR)) FM.createDirectory(HABITS_DIR);
+if (!FM.fileExists(HABITS_DIR)) FM.createDirectory(HABITS_DIR, true);
 
 const FILE_PATH = FM.joinPath(HABITS_DIR, FILE_NAME);
 
@@ -74,8 +66,9 @@ function getTodayKey() {
   return formatDate(new Date());
 }
 
-function loadHabitData() {
+async function loadHabitData() {
   if (FM.fileExists(FILE_PATH)) {
+    await FM.downloadFileFromiCloud(FILE_PATH);
     const raw = FM.readString(FILE_PATH);
     try {
       const parsed = JSON.parse(raw);
@@ -92,6 +85,14 @@ function saveHabitData(data) {
   FM.writeString(FILE_PATH, JSON.stringify(data, null, 2));
 }
 
+function daysBetween(start, end) {
+  const s = new Date(start);
+  const e = new Date(end);
+  s.setHours(0,0,0,0);
+  e.setHours(0,0,0,0);
+  return Math.round((e - s) / 86400000) + 1;
+}
+
 function getHabitStats(habitData, startDate) {
   const start = new Date(startDate);
   start.setHours(0, 0, 0, 0);
@@ -99,15 +100,14 @@ function getHabitStats(habitData, startDate) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const MS = 86400000;
-  const daysElapsed = Math.max(1, Math.floor((today - start) / MS) + 1);
+  const daysElapsed = Math.max(1, daysBetween(start, today));
 
   let filledCount = 0;
   let tempStreak = 0;
   let maxStreak = 0;
 
   for (let i = 0; i < daysElapsed; i++) {
-    const d = new Date(start.getTime() + i * MS);
+    const d = new Date(start.getTime() + i * 86400000);
     const key = formatDate(d);
     const filled = habitData[key] === true;
 
@@ -115,15 +115,14 @@ function getHabitStats(habitData, startDate) {
       filledCount++;
       tempStreak++;
       if (tempStreak > maxStreak) maxStreak = tempStreak;
-    } else {
-      if (d.getTime() < today.getTime()) tempStreak = 0;
+    } else if (d.getTime() < today.getTime()) {
+      tempStreak = 0;
     }
   }
 
   return { currentStreak: tempStreak, maxStreak, filledCount, daysElapsed };
 }
 
-// Auto-size: find the column count that yields the largest square.
 function bestLayout(totalDays, usableW, usableH, spacing) {
   let bestSize = 0;
   let bestCols = 1;
@@ -149,7 +148,7 @@ function bestLayout(totalDays, usableW, usableH, spacing) {
 
 // ==== INTERACTIVE MODE ====
 if (!config.runsInWidget) {
-  const data = loadHabitData();
+  const data = await loadHabitData();
   const today = getTodayKey();
 
   if (data[today] === true) {
@@ -170,7 +169,7 @@ if (!config.runsInWidget) {
 }
 
 // Widget rendering
-const HABIT_DATA = loadHabitData();
+const HABIT_DATA = await loadHabitData();
 const TODAY_KEY = getTodayKey();
 const NOW = new Date();
 const MS_PER_DAY = 86400000;
@@ -181,21 +180,17 @@ if (!(TODAY_KEY in HABIT_DATA)) {
   saveHabitData(HABIT_DATA);
 }
 
-// Available space for the grid
 const USABLE_W = WIDGET_WIDTH - PADDING_HORIZONTAL * 2;
 const USABLE_H = WIDGET_HEIGHT - PADDING_TOP - PADDING_BOTTOM - HEADER_HEIGHT - HEADER_TO_GRID_GAP;
 
-// Small safety buffer so floating-point sizes never cause the grid to overflow
 const SAFE_W = USABLE_W - 2;
 const SAFE_H = USABLE_H - 2;
 
 const { columns: COLUMNS, rows: ROWS, elementSize: ELEMENT_SIZE } =
   bestLayout(DAYS_TOTAL, SAFE_W, SAFE_H, MIN_SPACING);
 
-// Corner radius scales with square size (~25%)
 const ELEMENT_RADIUS = Math.max(1, Math.round(ELEMENT_SIZE * 0.25));
 
-// Build widget
 const widget = new ListWidget();
 widget.setPadding(PADDING_TOP, PADDING_HORIZONTAL, PADDING_BOTTOM, PADDING_HORIZONTAL);
 
@@ -214,20 +209,20 @@ const header = widget.addStack();
 header.layoutHorizontally();
 header.centerAlignContent();
 
-// Wrap each element in its own stack for consistent vertical alignment
 const leftWrap = header.addStack();
 leftWrap.centerAlignContent();
 const streakText = leftWrap.addText(`${stats.currentStreak}/${stats.maxStreak}`);
 streakText.font = FONT_REGULAR;
 streakText.textColor = new Color(TEXT_COLOR.hex, 0.6);
 
-// Flexible spacers push the title to the exact center
 header.addSpacer();
+
 const centerWrap = header.addStack();
 centerWrap.centerAlignContent();
 const titleText = centerWrap.addText(HABIT_NAME);
 titleText.font = FONT_BOLD;
 titleText.textColor = TEXT_COLOR;
+
 header.addSpacer();
 
 const rightWrap = header.addStack();
@@ -236,14 +231,12 @@ const progressText = rightWrap.addText(`${stats.filledCount}/${stats.daysElapsed
 progressText.font = FONT_REGULAR;
 progressText.textColor = new Color(TEXT_COLOR.hex, 0.6);
 
-// Fixed gap: header → grid
 widget.addSpacer(HEADER_TO_GRID_GAP);
 
 // Grid
 const todayMidnight = new Date(NOW);
 todayMidnight.setHours(0, 0, 0, 0);
 
-// Compute exact grid width and derive a precise fixed margin.
 const GRID_W = COLUMNS * ELEMENT_SIZE + (COLUMNS - 1) * MIN_SPACING;
 const SIDE_MARGIN = Math.max(0, (USABLE_W - GRID_W) / 2);
 
@@ -264,7 +257,6 @@ for (let row = 0; row < ROWS; row++) {
     const dayIndex = row * COLUMNS + col;
 
     if (dayIndex >= DAYS_TOTAL) {
-      // Invisible placeholder — keeps last row aligned
       const ph = rowStack.addStack();
       ph.size = new Size(ELEMENT_SIZE, ELEMENT_SIZE);
       continue;
@@ -288,8 +280,6 @@ for (let row = 0; row < ROWS; row++) {
 }
 
 gridContainer.addSpacer(SIDE_MARGIN);
-
-// Absorbs leftover vertical space on large widgets
 widget.addSpacer();
 
 Script.setWidget(widget);
